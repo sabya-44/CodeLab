@@ -1,0 +1,180 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny all reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidChallengeId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid == userId
+        && isValidId(data.uid)
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && (!('email' in data) || (data.email is string && data.email.size() <= 254))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChallengeProgress(data, userId, challengeId) {
+      return data.keys().hasAll([
+          'userId',
+          'challengeId',
+          'status',
+          'savedHtml',
+          'savedJs',
+          'studyNote',
+          'hintsUsed',
+          'attempts',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId',
+          'challengeId',
+          'status',
+          'savedHtml',
+          'savedJs',
+          'studyNote',
+          'hintsUsed',
+          'attempts',
+          'solvedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.userId is string
+        && data.userId == userId
+        && isValidId(data.userId)
+        && data.challengeId is string
+        && data.challengeId == challengeId
+        && isValidChallengeId(data.challengeId)
+        && data.status in ['attempted', 'solved']
+        && data.savedHtml is string
+        && data.savedHtml.size() <= 20000
+        && data.savedJs is string
+        && data.savedJs.size() <= 20000
+        && data.studyNote is string
+        && data.studyNote.size() <= 2000
+        && data.hintsUsed is int
+        && data.hintsUsed >= 0
+        && data.hintsUsed <= 10
+        && data.attempts is int
+        && data.attempts >= 0
+        && data.attempts <= 10000
+        && (!('solvedAt' in data) || data.solvedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
+      allow delete: if false;
+
+      match /progress/{challengeId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidChallengeId(challengeId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow list: if isOwner(userId)
+          && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidChallengeId(challengeId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidChallengeProgress(incoming(), userId, challengeId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && (incoming().status == 'attempted' || ('solvedAt' in incoming() && incoming().solvedAt == request.time));
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidChallengeId(challengeId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidChallengeProgress(incoming(), userId, challengeId)
+          && incoming().userId == existing().userId
+          && incoming().challengeId == existing().challengeId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (existing().status != 'solved' || incoming().status == 'solved')
+          && (
+            (
+              existing().status != 'solved'
+              && incoming().status == 'solved'
+              && 'solvedAt' in incoming()
+              && incoming().solvedAt == request.time
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'status',
+                'savedHtml',
+                'savedJs',
+                'studyNote',
+                'hintsUsed',
+                'attempts',
+                'solvedAt',
+                'updatedAt'
+              ])
+            )
+            || (
+              (existing().status == incoming().status)
+              && (!('solvedAt' in existing()) || incoming().solvedAt == existing().solvedAt)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'savedHtml',
+                'savedJs',
+                'studyNote',
+                'hintsUsed',
+                'attempts',
+                'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidChallengeId(challengeId);
+      }
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private learner profile for a student using CodeFix Lab.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the student.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Student display name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email address.",
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated."
+        }
+      },
+      "required": ["uid", "displayName", "createdAt", "updatedAt"]
+    },
+    "ChallengeProgress": {
+      "title": "ChallengeProgress",
+      "description": "Per-challenge code submission, completion state, and study notes for a learner.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "challengeId": {
+          "type": "string",
+          "description": "Slug identifier of the debugging challenge.",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["attempted", "solved"],
+          "description": "Current completion status for this challenge."
+        },
+        "savedHtml": {
+          "type": "string",
+          "description": "Latest HTML code saved by the student.",
+          "maxLength": 20000
+        },
+        "savedJs": {
+          "type": "string",
+          "description": "Latest JavaScript code saved by the student.",
+          "maxLength": 20000
+        },
+        "studyNote": {
+          "type": "string",
+          "description": "Personal study takeaway recorded by the student.",
+          "maxLength": 2000
+        },
+        "hintsUsed": {
+          "type": "integer",
+          "description": "Number of progressive hints revealed."
+        },
+        "attempts": {
+          "type": "integer",
+          "description": "Number of verification attempts submitted."
+        },
+        "solvedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when all behavioral tests first passed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when progress record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when progress record was last updated."
+        }
+      },
+      "required": [
+        "userId",
+        "challengeId",
+        "status",
+        "savedHtml",
+        "savedJs",
+        "studyNote",
+        "hintsUsed",
+        "attempts",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private student profile documents keyed by Auth UID."
+    },
+    "/users/{userId}/progress/{challengeId}": {
+      "schema": { "$ref": "#/entities/ChallengeProgress" },
+      "description": "Per-challenge code state, test status, and study notes owned by the user."
+    }
+  }
+}
